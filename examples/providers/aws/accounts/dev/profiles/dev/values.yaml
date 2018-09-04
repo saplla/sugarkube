@@ -13,12 +13,10 @@ provisioner:
   networking: calico
   topology: private
 
-  master:
-    node_count: 1
-    node_instance_size: t2.medium
-  worker:
-    node_count: 1
-    node_instance_size: t2.medium
+  master-count: 1
+  master-size: t2.medium
+  node-count: 1
+  node-size: t2.small
 
   spec:                             # The kops config will be downloaded and this
     docker:                         # will be patched into the spec before

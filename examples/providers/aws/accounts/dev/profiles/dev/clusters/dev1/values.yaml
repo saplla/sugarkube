@@ -1,8 +1,3 @@
 # Values from the `dev` profile can be overridden here:
 provisioner:
-  master:
-    node_count: 2
-    node_instance_size: t2.large
-  worker:
-    node_count: 2
-    node_instance_size: t2.large
+  node-size: t2.medium
