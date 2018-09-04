@@ -17,6 +17,7 @@
 package provisioner
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"github.com/pkg/errors"
@@ -56,7 +57,7 @@ func (p KopsProvisioner) clusterConfigExists(sc *kapp.StackConfig, providerImpl 
 		"clusters",
 		"--state",
 		provisionerValues["state"].(string),
-		provisionerValues["cluster_name"].(string),
+		provisionerValues["name"].(string),
 	}
 
 	cmd := exec.CommandContext(ctx, KOPS_PATH, args...)
@@ -85,7 +86,7 @@ func (p KopsProvisioner) create(sc *kapp.StackConfig, providerImpl provider.Prov
 	log.Debugf("Creating stack with Kops and values: %#v", providerVars)
 
 	args := make([]string, 0)
-	args = append(args, "start")
+	args = append(args, "create", "cluster")
 
 	provisionerValues := providerVars[PROVISIONER_KEY].(map[interface{}]interface{})
 
@@ -110,23 +111,29 @@ func (p KopsProvisioner) create(sc *kapp.StackConfig, providerImpl provider.Prov
 		}
 	}
 
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+
 	cmd := exec.Command(KOPS_PATH, args...)
 	cmd.Env = os.Environ()
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
 
 	if dryRun {
 		log.Infof("Dry run. Skipping invoking Kops, but would execute: %s %s",
 			KOPS_PATH, strings.Join(args, " "))
 	} else {
-		log.Infof("Launching Kops cluster... Executing: %s %s", KOPS_PATH,
+		log.Infof("Creating Kops cluster config... Executing: %s %s", KOPS_PATH,
 			strings.Join(args, " "))
 
 		err := cmd.Run()
 
 		if err != nil {
-			return errors.Wrap(err, "Failed to start a Kops cluster")
+			return errors.Wrapf(err, "Failed to create a Kops cluster config: %s", stderrBuf.String())
 		}
 
-		log.Infof("Kops cluster successfully started")
+		log.Debugf("Kops returned:\n%s", stdoutBuf.String())
+		log.Infof("Kops cluster config created")
 	}
 
 	sc.Status.StartedThisRun = true
@@ -159,7 +166,7 @@ func (p KopsProvisioner) isAlreadyOnline(sc *kapp.StackConfig, providerImpl prov
 		return false, nil
 	}
 
-	panic("not implemented")
+	panic("not implemented - need to try requesting namespaces or something via kubectl")
 }
 
 // No-op function, required to fully implement the Provisioner interface
