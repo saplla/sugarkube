@@ -1,5 +1,5 @@
 # Values from the `dev` profile can be overridden here:
-kops:
+provisioner:
   master:
     node_count: 2
     node_instance_size: t2.large
