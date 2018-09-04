@@ -54,6 +54,7 @@ func (p KopsProvisioner) clusterConfigExists(sc *kapp.StackConfig, providerImpl 
 		"clusters",
 		"--state",
 		provisionerValues["state"].(string),
+		provisionerValues["cluster_name"].(string),
 	}
 
 	cmd := exec.CommandContext(ctx, KOPS_PATH, args...)
@@ -61,7 +62,7 @@ func (p KopsProvisioner) clusterConfigExists(sc *kapp.StackConfig, providerImpl 
 
 	err := cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
-		return false, errors.New("Timed out trying to retrieve kops cluster config")
+		return false, errors.New("Timed out trying to retrieve kops cluster config. Check your credentials.")
 	}
 	if err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
