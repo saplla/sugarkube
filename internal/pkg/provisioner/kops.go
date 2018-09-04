@@ -37,6 +37,8 @@ type KopsProvisioner struct {
 // todo - make configurable
 const KOPS_PATH = "kops"
 
+const SPEC_KEY = "spec"
+
 // Returns whether a kops cluster config has already been created (this doesn't check whether the cluster is actually
 // running though).
 func (p KopsProvisioner) clusterConfigExists(sc *kapp.StackConfig, providerImpl provider.Provider) (bool, error) {
@@ -87,10 +89,25 @@ func (p KopsProvisioner) create(sc *kapp.StackConfig, providerImpl provider.Prov
 
 	provisionerValues := providerVars[PROVISIONER_KEY].(map[interface{}]interface{})
 
+	ignoreKeys := []string{
+		SPEC_KEY,
+	}
+
 	for k, v := range provisionerValues {
 		key := strings.Replace(k.(string), "_", "-", -1)
-		args = append(args, "--"+key)
-		args = append(args, fmt.Sprintf("%v", v))
+
+		shouldIgnore := false
+
+		for _, ignoreKey := range ignoreKeys {
+			if key == ignoreKey {
+				shouldIgnore = true
+			}
+		}
+
+		if !shouldIgnore {
+			args = append(args, "--"+key)
+			args = append(args, fmt.Sprintf("%v", v))
+		}
 	}
 
 	cmd := exec.Command(KOPS_PATH, args...)

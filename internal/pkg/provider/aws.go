@@ -49,6 +49,8 @@ func (p *AwsProvider) varsDirs(sc *kapp.StackConfig) ([]string, error) {
 		clusterDir := filepath.Join(path, AWS_PROVIDER_NAME, AWS_ACCOUNT_DIR, sc.Account, PROFILE_DIR, sc.Profile, CLUSTER_DIR, sc.Cluster)
 		regionDir := filepath.Join(path, AWS_PROVIDER_NAME, AWS_ACCOUNT_DIR, sc.Account, PROFILE_DIR, sc.Profile, CLUSTER_DIR, sc.Cluster, sc.Region)
 
+		p.region = sc.Region
+
 		if err := abortIfNotDir(accountDir,
 			fmt.Sprintf("No account directory found at %s", accountDir)); err != nil {
 			return nil, err
