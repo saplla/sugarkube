@@ -17,22 +17,65 @@
 package provisioner
 
 import (
+	"fmt"
 	"github.com/pkg/errors"
 	"github.com/sugarkube/sugarkube/internal/pkg/clustersot"
 	"github.com/sugarkube/sugarkube/internal/pkg/kapp"
 	"github.com/sugarkube/sugarkube/internal/pkg/log"
 	"github.com/sugarkube/sugarkube/internal/pkg/provider"
+	"os"
+	"os/exec"
+	"strings"
 )
 
 type KopsProvisioner struct {
 	clusterSot clustersot.ClusterSot
 }
 
+// todo - make configurable
+const KOPS_PATH = "kops"
+
 func (p KopsProvisioner) create(sc *kapp.StackConfig, providerImpl provider.Provider,
 	dryRun bool) error {
-	log.Debugf("Creating stack with Kops and config: %#v", sc)
 
-	panic("not implemented")
+	providerVars := provider.GetVars(providerImpl)
+	log.Debugf("Creating stack with Kops and values: %#v", providerVars)
+
+	args := make([]string, 0)
+	args = append(args, "start")
+
+	provisionerValues := providerVars[PROVISIONER_KEY].(map[interface{}]interface{})
+
+	for k, v := range provisionerValues {
+		key := strings.Replace(k.(string), "_", "-", -1)
+		args = append(args, "--"+key)
+		args = append(args, fmt.Sprintf("%v", v))
+	}
+
+	cmd := exec.Command(KOPS_PATH, args...)
+	cmd.Env = os.Environ()
+
+	if dryRun {
+		log.Infof("Dry run. Skipping invoking Kops, but would execute: %s %s",
+			KOPS_PATH, strings.Join(args, " "))
+	} else {
+		log.Infof("Launching Kops cluster... Executing: %s %s", KOPS_PATH,
+			strings.Join(args, " "))
+
+		err := cmd.Run()
+
+		if err != nil {
+			return errors.Wrap(err, "Failed to start a Kops cluster")
+		}
+
+		log.Infof("Kops cluster successfully started")
+	}
+
+	sc.Status.StartedThisRun = true
+	// only sleep before checking the cluster fo readiness if we started it
+	sc.Status.SleepBeforeReadyCheck = SLEEP_SECONDS_BEFORE_READY_CHECK
+
+	return nil
 }
 
 func (p KopsProvisioner) ClusterSot() (clustersot.ClusterSot, error) {
