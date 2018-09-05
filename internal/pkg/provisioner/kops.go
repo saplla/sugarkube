@@ -135,7 +135,7 @@ func (p KopsProvisioner) create(sc *kapp.StackConfig, providerImpl provider.Prov
 		log.Infof("Kops cluster config created")
 	}
 
-	err := p.update(sc, providerImpl)
+	err := p.update(sc, providerImpl, dryRun)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -174,7 +174,8 @@ func (p KopsProvisioner) isAlreadyOnline(sc *kapp.StackConfig, providerImpl prov
 }
 
 // No-op function, required to fully implement the Provisioner interface
-func (p KopsProvisioner) update(sc *kapp.StackConfig, providerImpl provider.Provider) error {
+func (p KopsProvisioner) update(sc *kapp.StackConfig, providerImpl provider.Provider,
+	dryRun bool) error {
 	configExists, err := p.clusterConfigExists(sc, providerImpl)
 	if err != nil {
 		return errors.WithStack(err)
