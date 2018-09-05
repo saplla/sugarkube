@@ -294,7 +294,7 @@ func (p KopsProvisioner) update(sc *kapp.StackConfig, providerImpl provider.Prov
 		"--yes",
 	}
 
-	cmd3 := exec.CommandContext(ctx, KOPS_PATH, args3...)
+	cmd3 := exec.Command(KOPS_PATH, args3...)
 	cmd3.Env = os.Environ()
 	cmd3.Stdout = &stdoutBuf
 	cmd3.Stderr = &stderrBuf
