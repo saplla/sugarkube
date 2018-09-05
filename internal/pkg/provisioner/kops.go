@@ -27,6 +27,7 @@ import (
 	"github.com/sugarkube/sugarkube/internal/pkg/log"
 	"github.com/sugarkube/sugarkube/internal/pkg/provider"
 	"gopkg.in/yaml.v2"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"strings"
@@ -206,7 +207,7 @@ func (p KopsProvisioner) update(sc *kapp.StackConfig, providerImpl provider.Prov
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel() // The cancel should be deferred so resources are cleaned up
 
 	cmd := exec.CommandContext(ctx, KOPS_PATH, args...)
@@ -247,7 +248,60 @@ func (p KopsProvisioner) update(sc *kapp.StackConfig, providerImpl provider.Prov
 	yamlString := string(yamlBytes[:])
 	log.Debugf("Merged config:\n%s", yamlString)
 
+	// write the merged data to a temp file because we can't pipe it into kops
+	tmpfile, err := ioutil.TempFile("", "kops.*.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer os.Remove(tmpfile.Name()) // clean up
+
+	if _, err := tmpfile.Write([]byte(yamlString)); err != nil {
+		tmpfile.Close()
+		log.Fatal(err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		log.Fatal(err)
+	}
+
 	// update the cluster
+
+	log.Debugf("Patching kops cluster config")
+	args2 := []string{
+		"replace",
+		"--state",
+		provisionerValues["state"].(string),
+		"--name", clusterName,
+		"-f",
+		tmpfile.Name(),
+	}
+
+	cmd2 := exec.CommandContext(ctx, KOPS_PATH, args2...)
+	cmd2.Env = os.Environ()
+	cmd2.Stdout = &stdoutBuf
+	cmd2.Stderr = &stderrBuf
+	err = cmd2.Run()
+	if err != nil {
+		return errors.Wrapf(err, "Failed to update Kops cluster config: %s", stderrBuf.String())
+	}
+
+	log.Debugf("Applying kops cluster config")
+	args3 := []string{
+		"update",
+		"cluster",
+		"--name", clusterName,
+		"--state", provisionerValues["state"].(string),
+		"--yes",
+	}
+
+	cmd3 := exec.CommandContext(ctx, KOPS_PATH, args3...)
+	cmd3.Env = os.Environ()
+	cmd3.Stdout = &stdoutBuf
+	cmd3.Stderr = &stderrBuf
+	err = cmd3.Run()
+	if err != nil {
+		return errors.Wrapf(err, "Failed to apply Kops cluster config: %s", stderrBuf.String())
+	}
 
 	return nil
 }
