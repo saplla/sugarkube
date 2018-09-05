@@ -127,13 +127,17 @@ func (p KopsProvisioner) create(sc *kapp.StackConfig, providerImpl provider.Prov
 			strings.Join(args, " "))
 
 		err := cmd.Run()
-
 		if err != nil {
 			return errors.Wrapf(err, "Failed to create a Kops cluster config: %s", stderrBuf.String())
 		}
 
 		log.Debugf("Kops returned:\n%s", stdoutBuf.String())
 		log.Infof("Kops cluster config created")
+	}
+
+	err := p.update(sc, providerImpl)
+	if err != nil {
+		return errors.WithStack(err)
 	}
 
 	sc.Status.StartedThisRun = true
@@ -180,5 +184,45 @@ func (p KopsProvisioner) update(sc *kapp.StackConfig, providerImpl provider.Prov
 		return nil
 	}
 
-	panic("not implemented")
+	providerVars := provider.GetVars(providerImpl)
+	provisionerValues := providerVars[PROVISIONER_KEY].(map[interface{}]interface{})
+
+	clusterName := provisionerValues["name"].(string)
+
+	// get the kops config
+	args := []string{
+		"get",
+		"cluster",
+		"--state",
+		provisionerValues["state"].(string),
+		"--name", clusterName,
+		"-o",
+		"yaml",
+	}
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel() // The cancel should be deferred so resources are cleaned up
+
+	cmd := exec.CommandContext(ctx, KOPS_PATH, args...)
+	cmd.Env = os.Environ()
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	log.Debugf("Downloading config for kops cluster %s", clusterName)
+
+	err = cmd.Run()
+	if err != nil {
+		return errors.Wrapf(err, "Failed to get Kops cluster config: %s", stderrBuf.String())
+	}
+
+	log.Debugf("Downloaded config for kops cluster %s:\n%s", clusterName, stdoutBuf.String())
+
+	// patch in the configured spec
+
+	// update the cluster
+
+	return nil
 }
