@@ -274,7 +274,7 @@ func (p KopsProvisioner) update(sc *kapp.StackConfig, providerImpl provider.Prov
 
 	// update the cluster
 
-	log.Debugf("Patching kops cluster config")
+	log.Debugf("Patching kops cluster config...")
 	args2 := []string{
 		"replace",
 		"--state",
@@ -293,7 +293,7 @@ func (p KopsProvisioner) update(sc *kapp.StackConfig, providerImpl provider.Prov
 		return errors.Wrapf(err, "Failed to update Kops cluster config: %s", stderrBuf.String())
 	}
 
-	log.Debugf("Applying kops cluster config")
+	log.Debugf("Applying kops cluster config...")
 	args3 := []string{
 		"update",
 		"cluster",

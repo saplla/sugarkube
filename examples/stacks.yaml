@@ -51,6 +51,6 @@ aws-dev:
   - uri: manifests/07-core-security.yaml
   - uri: manifests/10-core-services.yaml
   - uri: manifests/15-core-aws.yaml
-  - uri: manifests/20-security.yaml
-  - uri: manifests/30-ci-cd.yaml
-  - uri: manifests/40-wordpress-sites.yaml
+#  - uri: manifests/20-security.yaml
+#  - uri: manifests/30-ci-cd.yaml
+#  - uri: manifests/40-wordpress-sites.yaml

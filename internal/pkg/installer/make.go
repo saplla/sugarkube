@@ -148,6 +148,8 @@ func (i MakeInstaller) run(makeTarget string, kappObj *kapp.Kapp,
 			"with command: %#v", kappObj.Id, makeCmd.Dir, makeCmd)
 	} else {
 		// run it
+		log.Debugf("Install kapp '%s' in directory '%s' "+
+			"with command: %#v", kappObj.Id, makeCmd.Dir, makeCmd)
 		log.Infof("Installing kapp '%s'...", kappObj.Id)
 
 		err := makeCmd.Run()
