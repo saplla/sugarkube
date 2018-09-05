@@ -20,11 +20,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/imdario/mergo"
 	"github.com/pkg/errors"
 	"github.com/sugarkube/sugarkube/internal/pkg/clustersot"
 	"github.com/sugarkube/sugarkube/internal/pkg/kapp"
 	"github.com/sugarkube/sugarkube/internal/pkg/log"
 	"github.com/sugarkube/sugarkube/internal/pkg/provider"
+	"gopkg.in/yaml.v2"
 	"os"
 	"os/exec"
 	"strings"
@@ -221,7 +223,29 @@ func (p KopsProvisioner) update(sc *kapp.StackConfig, providerImpl provider.Prov
 
 	log.Debugf("Downloaded config for kops cluster %s:\n%s", clusterName, stdoutBuf.String())
 
+	kopsConfig := map[string]interface{}{}
+	err = yaml.Unmarshal(stdoutBuf.Bytes(), kopsConfig)
+	if err != nil {
+		return errors.Wrap(err, "Error parsing kops config")
+	}
+	log.Debugf("Yaml kopsConfig:\n%s", kopsConfig)
+
+	specValues := map[string]interface{}{"spec": provisionerValues["spec"]}
+
+	log.Debugf("Spec to merge in:\n%s", specValues)
+
 	// patch in the configured spec
+	mergo.Merge(&kopsConfig, specValues, mergo.WithOverride)
+
+	log.Debugf("Merged config is:\n%s", kopsConfig)
+
+	yamlBytes, err := yaml.Marshal(&kopsConfig)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	yamlString := string(yamlBytes[:])
+	log.Debugf("Merged config:\n%s", yamlString)
 
 	// update the cluster
 
