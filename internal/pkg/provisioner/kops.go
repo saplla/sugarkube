@@ -23,6 +23,7 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/pkg/errors"
 	"github.com/sugarkube/sugarkube/internal/pkg/clustersot"
+	"github.com/sugarkube/sugarkube/internal/pkg/convert"
 	"github.com/sugarkube/sugarkube/internal/pkg/kapp"
 	"github.com/sugarkube/sugarkube/internal/pkg/log"
 	"github.com/sugarkube/sugarkube/internal/pkg/provider"
@@ -41,7 +42,7 @@ type KopsProvisioner struct {
 // todo - make configurable
 const KOPS_PATH = "kops"
 
-const SPEC_KEY = "spec"
+const SPECS_KEY = "specs"
 
 // Returns whether a kops cluster config has already been created (this doesn't check whether the cluster is actually
 // running though).
@@ -52,7 +53,7 @@ func (p KopsProvisioner) clusterConfigExists(sc *kapp.StackConfig, providerImpl 
 
 	provisionerValues := providerVars[PROVISIONER_KEY].(map[interface{}]interface{})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel() // The cancel should be deferred so resources are cleaned up
 
 	args := []string{
@@ -94,7 +95,7 @@ func (p KopsProvisioner) create(sc *kapp.StackConfig, providerImpl provider.Prov
 	provisionerValues := providerVars[PROVISIONER_KEY].(map[interface{}]interface{})
 
 	ignoreKeys := []string{
-		SPEC_KEY,
+		SPECS_KEY,
 	}
 
 	for k, v := range provisionerValues {
@@ -231,7 +232,14 @@ func (p KopsProvisioner) update(sc *kapp.StackConfig, providerImpl provider.Prov
 	}
 	log.Debugf("Yaml kopsConfig:\n%s", kopsConfig)
 
-	specValues := map[string]interface{}{"spec": provisionerValues["spec"]}
+	spcs, err := convert.MapInterfaceInterfaceToMapStringInterface(
+		provisionerValues["specs"].(map[interface{}]interface{}))
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	clusterSpecs := spcs["cluster"]
+
+	specValues := map[string]interface{}{"spec": clusterSpecs}
 
 	log.Debugf("Spec to merge in:\n%s", specValues)
 
