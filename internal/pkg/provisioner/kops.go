@@ -174,7 +174,17 @@ func (p KopsProvisioner) isAlreadyOnline(sc *kapp.StackConfig, providerImpl prov
 		return false, nil
 	}
 
-	panic("not implemented - need to try requesting namespaces or something via kubectl")
+	clusterSot, err := p.ClusterSot()
+	if err != nil {
+		return false, errors.WithStack(err)
+	}
+
+	online, err := clustersot.IsOnline(clusterSot, sc, providerImpl)
+	if err != nil {
+		return false, errors.WithStack(err)
+	}
+
+	return online, nil
 }
 
 // No-op function, required to fully implement the Provisioner interface

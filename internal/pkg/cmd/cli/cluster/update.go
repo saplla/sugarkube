@@ -133,8 +133,8 @@ func (c *updateCmd) run(cmd *cobra.Command, args []string) error {
 		return errors.WithStack(err)
 	}
 
-	if online && !c.dryRun {
-		log.Infof("Target cluster is already online. Aborting.")
+	if !online {
+		log.Infof("Target cluster is not online. Aborting.")
 		return nil
 	}
 
