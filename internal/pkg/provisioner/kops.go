@@ -144,6 +144,26 @@ func (p KopsProvisioner) create(sc *kapp.StackConfig, providerImpl provider.Prov
 		return errors.WithStack(err)
 	}
 
+	clusterName := provisionerValues["name"].(string)
+
+	log.Debugf("Applying kops cluster config...")
+	args3 := []string{
+		"update",
+		"cluster",
+		"--name", clusterName,
+		"--state", provisionerValues["state"].(string),
+		"--yes",
+	}
+
+	cmd3 := exec.Command(KOPS_PATH, args3...)
+	cmd3.Env = os.Environ()
+	cmd3.Stdout = &stdoutBuf
+	cmd3.Stderr = &stderrBuf
+	err = cmd3.Run()
+	if err != nil {
+		return errors.Wrapf(err, "Failed to apply Kops cluster config: %s", stderrBuf.String())
+	}
+
 	sc.Status.StartedThisRun = true
 	// only sleep before checking the cluster fo readiness if we started it
 	sc.Status.SleepBeforeReadyCheck = SLEEP_SECONDS_BEFORE_READY_CHECK
@@ -303,23 +323,8 @@ func (p KopsProvisioner) update(sc *kapp.StackConfig, providerImpl provider.Prov
 		return errors.Wrapf(err, "Failed to update Kops cluster config: %s", stderrBuf.String())
 	}
 
-	log.Debugf("Applying kops cluster config...")
-	args3 := []string{
-		"update",
-		"cluster",
-		"--name", clusterName,
-		"--state", provisionerValues["state"].(string),
-		"--yes",
-	}
-
-	cmd3 := exec.Command(KOPS_PATH, args3...)
-	cmd3.Env = os.Environ()
-	cmd3.Stdout = &stdoutBuf
-	cmd3.Stderr = &stderrBuf
-	err = cmd3.Run()
-	if err != nil {
-		return errors.Wrapf(err, "Failed to apply Kops cluster config: %s", stderrBuf.String())
-	}
+	log.Infof("Config of Kops cluster '%s' updated. You need to manually run the appropriate Kops command "+
+		"to apply the change or perform a rolling update with your desired parameters.", clusterName)
 
 	return nil
 }
