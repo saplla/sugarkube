@@ -1,4 +1,4 @@
-# region: eu-west-1         # todo - the aws provider should populate this automatically
+kube_context: <your_context>       # the kubectl context to reach this cluster
 
 # kube_context: "{{ cluster }}.{{ region }}.{{ account_name }}.{{ domain }}"    # populated by default but overrideable
 
@@ -7,14 +7,10 @@
                              # todo - how to pull this out of the pre-init kapp which should create it?
 
 provisioner:
-  # from https://stable.release.core-os.net/amd64-usr/current/coreos_production_ami_hvm_eu-west-1.txt
-  node_image_id: ami-1d3cd8f0
+  name: <your cluster name>
 
-  master:
-    zones:
-    - eu-west-1a
-    worker:
-      zones:
-      - eu-west-1a
-      - eu-west-1b
-      - eu-west-1c
+  # from https://stable.release.core-os.net/amd64-usr/current/coreos_production_ami_hvm_eu-west-1.txt
+  image: ami-02e92935e00c60cf0
+
+  master-zones: eu-west-1a
+  zones: eu-west-1a,eu-west-1b,eu-west-1c
