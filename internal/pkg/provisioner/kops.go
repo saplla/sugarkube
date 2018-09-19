@@ -44,6 +44,8 @@ const KOPS_PATH = "kops"
 
 const SPECS_KEY = "specs"
 
+const KOPS_SLEEP_SECONDS_BEFORE_READY_CHECK = 60
+
 // Returns whether a kops cluster config has already been created (this doesn't check whether the cluster is actually
 // running though).
 func (p KopsProvisioner) clusterConfigExists(sc *kapp.StackConfig, providerImpl provider.Provider) (bool, error) {
@@ -139,7 +141,7 @@ func (p KopsProvisioner) create(sc *kapp.StackConfig, providerImpl provider.Prov
 		log.Infof("Kops cluster config created")
 	}
 
-	err := p.update(sc, providerImpl, dryRun)
+	err := p.patch(sc, providerImpl, dryRun)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -166,7 +168,7 @@ func (p KopsProvisioner) create(sc *kapp.StackConfig, providerImpl provider.Prov
 
 	sc.Status.StartedThisRun = true
 	// only sleep before checking the cluster fo readiness if we started it
-	sc.Status.SleepBeforeReadyCheck = SLEEP_SECONDS_BEFORE_READY_CHECK
+	sc.Status.SleepBeforeReadyCheck = KOPS_SLEEP_SECONDS_BEFORE_READY_CHECK
 
 	return nil
 }
@@ -207,8 +209,61 @@ func (p KopsProvisioner) isAlreadyOnline(sc *kapp.StackConfig, providerImpl prov
 	return online, nil
 }
 
-// No-op function, required to fully implement the Provisioner interface
+// Patches a Kops cluster config then performs a rolling update to apply it
 func (p KopsProvisioner) update(sc *kapp.StackConfig, providerImpl provider.Provider,
+	dryRun bool) error {
+
+	err := p.patch(sc, providerImpl, dryRun)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	providerVars := provider.GetVars(providerImpl)
+
+	provisionerValues := providerVars[PROVISIONER_KEY].(map[interface{}]interface{})
+
+	clusterName := provisionerValues["name"].(string)
+
+	log.Infof("Performing a rolling update to apply config changes to the kops cluster...")
+	// todo users should be able to specify additional parameters in configs per-cluster
+	args := []string{
+		"rolling-update",
+		"cluster",
+		clusterName,
+		"--state", provisionerValues["state"].(string),
+		"--yes",
+	}
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+
+	cmd := exec.Command(KOPS_PATH, args...)
+	cmd.Env = os.Environ()
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	if dryRun {
+		log.Infof("Dry run. Skipping invoking Kops, but would execute: %s %s",
+			KOPS_PATH, strings.Join(args, " "))
+	} else {
+		log.Infof("Running Kops rolling update... Executing: %s %s", KOPS_PATH,
+			strings.Join(args, " "))
+
+		err := cmd.Run()
+		if err != nil {
+			return errors.Wrapf(err, "Failed to update Kops cluster: %s", stderrBuf.String())
+		}
+
+		log.Debugf("Kops returned:\n%s", stdoutBuf.String())
+		log.Infof("Kops cluster updated")
+	}
+
+	return nil
+}
+
+// Patches a Kops cluster configuration. Downloads the current config then merges in any configured
+// spec.
+func (p KopsProvisioner) patch(sc *kapp.StackConfig, providerImpl provider.Provider,
 	dryRun bool) error {
 	configExists, err := p.clusterConfigExists(sc, providerImpl)
 	if err != nil {
@@ -320,11 +375,10 @@ func (p KopsProvisioner) update(sc *kapp.StackConfig, providerImpl provider.Prov
 	cmd2.Stderr = &stderrBuf
 	err = cmd2.Run()
 	if err != nil {
-		return errors.Wrapf(err, "Failed to update Kops cluster config: %s", stderrBuf.String())
+		return errors.Wrapf(err, "Failed to patch Kops cluster config: %s", stderrBuf.String())
 	}
 
-	log.Infof("Config of Kops cluster '%s' updated. You need to manually run the appropriate Kops command "+
-		"to apply the change or perform a rolling update with your desired parameters.", clusterName)
+	log.Infof("Config of Kops cluster '%s' patched.", clusterName)
 
 	return nil
 }

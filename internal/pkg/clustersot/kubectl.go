@@ -93,6 +93,7 @@ func (c KubeCtlClusterSot) isReady(sc *kapp.StackConfig, providerImpl provider.P
 	if err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
 			if kubeCtlStderr.String() != "" {
+				// todo - add a retry loop
 				errMsg := fmt.Sprintf("kubectl exited with %s", kubeCtlStderr.String())
 				log.Fatalf(errMsg)
 				return false, errors.Wrap(err, errMsg)
