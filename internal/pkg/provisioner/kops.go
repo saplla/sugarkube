@@ -146,26 +146,6 @@ func (p KopsProvisioner) create(sc *kapp.StackConfig, providerImpl provider.Prov
 		return errors.WithStack(err)
 	}
 
-	clusterName := provisionerValues["name"].(string)
-
-	log.Debugf("Applying kops cluster config...")
-	args3 := []string{
-		"update",
-		"cluster",
-		"--name", clusterName,
-		"--state", provisionerValues["state"].(string),
-		"--yes",
-	}
-
-	cmd3 := exec.Command(KOPS_PATH, args3...)
-	cmd3.Env = os.Environ()
-	cmd3.Stdout = &stdoutBuf
-	cmd3.Stderr = &stderrBuf
-	err = cmd3.Run()
-	if err != nil {
-		return errors.Wrapf(err, "Failed to apply Kops cluster config: %s", stderrBuf.String())
-	}
-
 	sc.Status.StartedThisRun = true
 	// only sleep before checking the cluster fo readiness if we started it
 	sc.Status.SleepBeforeReadyCheck = KOPS_SLEEP_SECONDS_BEFORE_READY_CHECK
@@ -317,12 +297,13 @@ func (p KopsProvisioner) patch(sc *kapp.StackConfig, providerImpl provider.Provi
 	}
 	log.Debugf("Yaml kopsConfig:\n%s", kopsConfig)
 
-	spcs, err := convert.MapInterfaceInterfaceToMapStringInterface(
+	specs, err := convert.MapInterfaceInterfaceToMapStringInterface(
 		provisionerValues["specs"].(map[interface{}]interface{}))
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	clusterSpecs := spcs["cluster"]
+
+	clusterSpecs := specs["cluster"]
 
 	specValues := map[string]interface{}{"spec": clusterSpecs}
 
@@ -340,6 +321,8 @@ func (p KopsProvisioner) patch(sc *kapp.StackConfig, providerImpl provider.Provi
 
 	yamlString := string(yamlBytes[:])
 	log.Debugf("Merged config:\n%s", yamlString)
+
+	// if the merged values are the same as the original, skip replacing the config
 
 	// write the merged data to a temp file because we can't pipe it into kops
 	tmpfile, err := ioutil.TempFile("", "kops.*.txt")
@@ -379,6 +362,24 @@ func (p KopsProvisioner) patch(sc *kapp.StackConfig, providerImpl provider.Provi
 	}
 
 	log.Infof("Config of Kops cluster '%s' patched.", clusterName)
+
+	log.Debugf("Applying kops cluster config...")
+	args3 := []string{
+		"update",
+		"cluster",
+		"--name", clusterName,
+		"--state", provisionerValues["state"].(string),
+		"--yes",
+	}
+
+	cmd3 := exec.Command(KOPS_PATH, args3...)
+	cmd3.Env = os.Environ()
+	cmd3.Stdout = &stdoutBuf
+	cmd3.Stderr = &stderrBuf
+	err = cmd3.Run()
+	if err != nil {
+		return errors.Wrapf(err, "Failed to apply Kops cluster config: %s", stderrBuf.String())
+	}
 
 	return nil
 }
