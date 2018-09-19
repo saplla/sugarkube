@@ -39,10 +39,22 @@ type KopsProvisioner struct {
 	clusterSot clustersot.ClusterSot
 }
 
+type KopsConfig struct {
+	Name   string
+	Params struct {
+		Global        map[string]string
+		CreateCluster map[string]string `yaml:"create_cluster"`
+		RollingUpdate map[string]string `yaml:"rolling_update"`
+	}
+}
+
 // todo - make configurable
 const KOPS_PATH = "kops"
 
 const SPECS_KEY = "specs"
+
+//const KOPS_CREATE_CLUSTER_KEY = "create_cluster"
+//const KOPS_ROLLING_UPDATE_KEY = "rolling_update"
 
 const KOPS_SLEEP_SECONDS_BEFORE_READY_CHECK = 60
 
@@ -54,6 +66,10 @@ func (p KopsProvisioner) clusterConfigExists(sc *kapp.StackConfig, providerImpl 
 	log.Debugf("Checking if Kops cluster config exists for values: %#v", providerVars)
 
 	provisionerValues := providerVars[PROVISIONER_KEY].(map[interface{}]interface{})
+	kopsConfig, err := getKopsConfig(provisionerValues)
+	if err != nil {
+		return false, errors.WithStack(err)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel() // The cancel should be deferred so resources are cleaned up
@@ -62,14 +78,14 @@ func (p KopsProvisioner) clusterConfigExists(sc *kapp.StackConfig, providerImpl 
 		"get",
 		"clusters",
 		"--state",
-		provisionerValues["state"].(string),
-		provisionerValues["name"].(string),
+		kopsConfig.Params.Global["state"],
+		kopsConfig.Name,
 	}
 
 	cmd := exec.CommandContext(ctx, KOPS_PATH, args...)
 	cmd.Env = os.Environ()
 
-	err := cmd.Run()
+	err = cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
 		return false, errors.New("Timed out trying to retrieve kops cluster config. Check your credentials.")
 	}
@@ -95,26 +111,15 @@ func (p KopsProvisioner) create(sc *kapp.StackConfig, providerImpl provider.Prov
 	args = append(args, "create", "cluster")
 
 	provisionerValues := providerVars[PROVISIONER_KEY].(map[interface{}]interface{})
-
-	ignoreKeys := []string{
-		SPECS_KEY,
+	kopsConfig, err := getKopsConfig(provisionerValues)
+	if err != nil {
+		return errors.WithStack(err)
 	}
 
-	for k, v := range provisionerValues {
-		key := strings.Replace(k.(string), "_", "-", -1)
-
-		shouldIgnore := false
-
-		for _, ignoreKey := range ignoreKeys {
-			if key == ignoreKey {
-				shouldIgnore = true
-			}
-		}
-
-		if !shouldIgnore {
-			args = append(args, "--"+key)
-			args = append(args, fmt.Sprintf("%v", v))
-		}
+	for k, v := range kopsConfig.Params.CreateCluster {
+		key := strings.Replace(k, "_", "-", -1)
+		args = append(args, "--"+key)
+		args = append(args, fmt.Sprintf("%v", v))
 	}
 
 	var stdoutBuf bytes.Buffer
@@ -141,7 +146,7 @@ func (p KopsProvisioner) create(sc *kapp.StackConfig, providerImpl provider.Prov
 		log.Infof("Kops cluster config created")
 	}
 
-	err := p.patch(sc, providerImpl, dryRun)
+	err = p.patch(sc, providerImpl, dryRun)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -201,8 +206,12 @@ func (p KopsProvisioner) update(sc *kapp.StackConfig, providerImpl provider.Prov
 	providerVars := provider.GetVars(providerImpl)
 
 	provisionerValues := providerVars[PROVISIONER_KEY].(map[interface{}]interface{})
+	kopsConfig, err := getKopsConfig(provisionerValues)
+	if err != nil {
+		return errors.WithStack(err)
+	}
 
-	clusterName := provisionerValues["name"].(string)
+	clusterName := kopsConfig.Name
 
 	log.Infof("Performing a rolling update to apply config changes to the kops cluster...")
 	// todo users should be able to specify additional parameters in configs per-cluster
@@ -256,9 +265,13 @@ func (p KopsProvisioner) patch(sc *kapp.StackConfig, providerImpl provider.Provi
 
 	providerVars := provider.GetVars(providerImpl)
 	provisionerValues := providerVars[PROVISIONER_KEY].(map[interface{}]interface{})
+	kopsConfig, err := getKopsConfig(provisionerValues)
+	if err != nil {
+		return errors.WithStack(err)
+	}
 
-	clusterName := provisionerValues["name"].(string)
-	statePath := provisionerValues["state"].(string)
+	clusterName := kopsConfig.Name
+	statePath := kopsConfig.Params.Global["state"]
 
 	// get the kops config
 	args := []string{
@@ -291,12 +304,12 @@ func (p KopsProvisioner) patch(sc *kapp.StackConfig, providerImpl provider.Provi
 
 	log.Debugf("Downloaded config for kops cluster %s:\n%s", clusterName, stdoutBuf.String())
 
-	kopsConfig := map[string]interface{}{}
-	err = yaml.Unmarshal(stdoutBuf.Bytes(), kopsConfig)
+	kopsYamlConfig := map[string]interface{}{}
+	err = yaml.Unmarshal(stdoutBuf.Bytes(), kopsYamlConfig)
 	if err != nil {
 		return errors.Wrap(err, "Error parsing kops config")
 	}
-	log.Debugf("Yaml kopsConfig:\n%s", kopsConfig)
+	log.Debugf("Yaml kopsYamlConfig:\n%s", kopsYamlConfig)
 
 	specs, err := convert.MapInterfaceInterfaceToMapStringInterface(
 		provisionerValues["specs"].(map[interface{}]interface{}))
@@ -311,11 +324,11 @@ func (p KopsProvisioner) patch(sc *kapp.StackConfig, providerImpl provider.Provi
 	log.Debugf("Spec to merge in:\n%s", specValues)
 
 	// patch in the configured spec
-	mergo.Merge(&kopsConfig, specValues, mergo.WithOverride)
+	mergo.Merge(&kopsYamlConfig, specValues, mergo.WithOverride)
 
-	log.Debugf("Merged config is:\n%s", kopsConfig)
+	log.Debugf("Merged config is:\n%s", kopsYamlConfig)
 
-	yamlBytes, err := yaml.Marshal(&kopsConfig)
+	yamlBytes, err := yaml.Marshal(&kopsYamlConfig)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -486,4 +499,33 @@ func (p KopsProvisioner) patchInstanceGroup(clusterName string, statePath string
 	log.Infof("IG config of Kops cluster '%s' patched.", clusterName)
 
 	return nil
+}
+
+func parameteriseValues(args []string, valueMap map[interface{}]interface{}) {
+	for k, v := range valueMap {
+		key := strings.Replace(k.(string), "_", "-", -1)
+		args = append(args, "--"+key)
+		args = append(args, fmt.Sprintf("%v", v))
+	}
+}
+
+// Parses the Kops provisioner config
+func getKopsConfig(provisionerValues map[interface{}]interface{}) (*KopsConfig, error) {
+	log.Debugf("Marshalling: %#v", provisionerValues)
+
+	// marshal then unmarshal the provisioner values to get the command parameters
+	byteData, err := yaml.Marshal(provisionerValues)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	log.Debugf("Marshalled to: %s", string(byteData[:]))
+
+	var kopsConfig KopsConfig
+	err = yaml.Unmarshal(byteData, &kopsConfig)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return &kopsConfig, nil
 }

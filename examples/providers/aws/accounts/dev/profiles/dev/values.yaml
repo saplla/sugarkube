@@ -4,19 +4,25 @@ is_prod_cluster: false
 hosted_zone: example.com            # The domain to host your stuff under.
 
 provisioner:
-  state: s3://bucket.example.com
-  kubernetes_version: 1.9.6
-  ssh_public_key: "~/.ssh/example_rsa.pub"       # Path to the SSH key used to create the kops cluster when using kops
-  api_loadbalancer_type: public     # More kops settings...
-  dns: public
-  authorization: RBAC
-  networking: calico
-  topology: public
+  params:       # parameters to different kops commands
+    global:     # these are applied to all commands
+      state: s3://bucket.example.com
 
-  master-count: 1
-  master-size: t2.medium
-  node-count: 1
-  node-size: t2.small
+    create_cluster:             # Parameters for the `kops create cluster` command
+      kubernetes_version: 1.9.6
+      ssh_public_key: "~/.ssh/example_rsa.pub"       # Path to the SSH key used to create the kops cluster when using kops
+      api_loadbalancer_type: public
+      dns: public
+      authorization: RBAC
+      networking: calico
+      topology: public
+      master_count: 1
+      master_size: t2.medium
+      node_count: 1
+      node_size: t2.small
+
+    rolling_update:
+      node_interval: 4m0s
 
   specs:                              # The kops config will be downloaded and this
     cluster:                          # The kops config will be downloaded and this

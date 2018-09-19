@@ -1,3 +1,5 @@
 # Values from the `dev` profile can be overridden here:
 provisioner:
-  node-size: t2.medium
+  params:
+    create_cluster:
+      node-size: t2.medium

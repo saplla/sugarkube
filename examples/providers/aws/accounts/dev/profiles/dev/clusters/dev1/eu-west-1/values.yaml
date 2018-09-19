@@ -9,8 +9,10 @@ kube_context: <your_context>       # the kubectl context to reach this cluster
 provisioner:
   name: <your cluster name>
 
-  # from https://stable.release.core-os.net/amd64-usr/current/coreos_production_ami_hvm_eu-west-1.txt
-  image: ami-02e92935e00c60cf0
+  params:
+    create_cluster:
+      # from https://stable.release.core-os.net/amd64-usr/current/coreos_production_ami_hvm_eu-west-1.txt
+      image: ami-02e92935e00c60cf0
 
-  master-zones: eu-west-1a
-  zones: eu-west-1a,eu-west-1b,eu-west-1c
+      master-zones: eu-west-1a
+      zones: eu-west-1a,eu-west-1b,eu-west-1c
