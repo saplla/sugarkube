@@ -37,6 +37,9 @@ provisioner:
         name: audit-policy.yaml
         roles:
         - Master
-    instancegroup:        # how to select the right resource?
-      nodeLabels:
-        kops.k8s.io/test: test-label
+    instanceGroups:
+      nodes:                    # name of the IG
+        nodeLabels:
+          kops.k8s.io/test: test-label
+        cloudLabels:
+          project: test-project-label

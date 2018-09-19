@@ -258,13 +258,14 @@ func (p KopsProvisioner) patch(sc *kapp.StackConfig, providerImpl provider.Provi
 	provisionerValues := providerVars[PROVISIONER_KEY].(map[interface{}]interface{})
 
 	clusterName := provisionerValues["name"].(string)
+	statePath := provisionerValues["state"].(string)
 
 	// get the kops config
 	args := []string{
 		"get",
 		"cluster",
 		"--state",
-		provisionerValues["state"].(string),
+		statePath,
 		"--name", clusterName,
 		"-o",
 		"yaml",
@@ -363,12 +364,21 @@ func (p KopsProvisioner) patch(sc *kapp.StackConfig, providerImpl provider.Provi
 
 	log.Infof("Config of Kops cluster '%s' patched.", clusterName)
 
+	log.Debug("Patching instance group configs...")
+
+	igSpecs := specs["instanceGroups"].(map[interface{}]interface{})
+
+	for instanceGroupName, newSpec := range igSpecs {
+		specValues := map[string]interface{}{"spec": newSpec}
+		p.patchInstanceGroup(clusterName, statePath, instanceGroupName.(string), specValues)
+	}
+
 	log.Debugf("Applying kops cluster config...")
 	args3 := []string{
 		"update",
 		"cluster",
 		"--name", clusterName,
-		"--state", provisionerValues["state"].(string),
+		"--state", statePath,
 		"--yes",
 	}
 
@@ -380,6 +390,100 @@ func (p KopsProvisioner) patch(sc *kapp.StackConfig, providerImpl provider.Provi
 	if err != nil {
 		return errors.Wrapf(err, "Failed to apply Kops cluster config: %s", stderrBuf.String())
 	}
+
+	return nil
+}
+
+func (p KopsProvisioner) patchInstanceGroup(clusterName string, statePath string, instanceGroupName string,
+	newSpec map[string]interface{}) error {
+	args := []string{
+		"get",
+		"instancegroups",
+		"--state", statePath,
+		"--name", clusterName,
+		instanceGroupName,
+		"-o",
+		"yaml",
+	}
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel() // The cancel should be deferred so resources are cleaned up
+
+	cmd := exec.CommandContext(ctx, KOPS_PATH, args...)
+	cmd.Env = os.Environ()
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	log.Debugf("Downloading IG config for kops cluster %s", clusterName)
+
+	err := cmd.Run()
+	if err != nil {
+		return errors.Wrapf(err, "Failed to get Kops IG config: %s", stderrBuf.String())
+	}
+
+	log.Debugf("Downloaded IG config for kops cluster %s:\n%s", clusterName, stdoutBuf.String())
+
+	kopsConfig := map[string]interface{}{}
+	err = yaml.Unmarshal(stdoutBuf.Bytes(), kopsConfig)
+	if err != nil {
+		return errors.Wrap(err, "Error parsing kops IG config")
+	}
+	log.Debugf("Yaml IG kopsConfig:\n%s", kopsConfig)
+
+	// patch in the configured spec
+	mergo.Merge(&kopsConfig, newSpec, mergo.WithOverride)
+
+	log.Debugf("Merged IG config is:\n%s", kopsConfig)
+
+	yamlBytes, err := yaml.Marshal(&kopsConfig)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	yamlString := string(yamlBytes[:])
+	log.Debugf("Merged config:\n%s", yamlString)
+
+	// write the merged data to a temp file because we can't pipe it into kops
+	tmpfile, err := ioutil.TempFile("", "kops.*.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer os.Remove(tmpfile.Name()) // clean up
+
+	if _, err := tmpfile.Write([]byte(yamlString)); err != nil {
+		tmpfile.Close()
+		log.Fatal(err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		log.Fatal(err)
+	}
+
+	// update the cluster config
+
+	log.Debugf("Patching kops IG config...")
+	args2 := []string{
+		"replace",
+		"--state",
+		statePath,
+		"--name", clusterName,
+		"-f",
+		tmpfile.Name(),
+	}
+
+	cmd2 := exec.CommandContext(ctx, KOPS_PATH, args2...)
+	cmd2.Env = os.Environ()
+	cmd2.Stdout = &stdoutBuf
+	cmd2.Stderr = &stderrBuf
+	err = cmd2.Run()
+	if err != nil {
+		return errors.Wrapf(err, "Failed to patch Kops IG config: %s", stderrBuf.String())
+	}
+
+	log.Infof("IG config of Kops cluster '%s' patched.", clusterName)
 
 	return nil
 }
