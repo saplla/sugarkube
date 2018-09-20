@@ -207,7 +207,8 @@ func (p KopsProvisioner) update(sc *kapp.StackConfig, providerImpl provider.Prov
 	}
 
 	log.Infof("Performing a rolling update to apply config changes to the kops cluster...")
-	// todo users should be able to specify additional parameters in configs per-cluster
+	// todo make the --yes flag configurable, perhaps through a CLI arg so people can verify their
+	// changes before applying them
 	args := []string{
 		"rolling-update",
 		"cluster",
