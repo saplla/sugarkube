@@ -40,7 +40,6 @@ type KopsProvisioner struct {
 }
 
 type KopsConfig struct {
-	Name   string
 	Params struct {
 		Global        map[string]string
 		CreateCluster map[string]string `yaml:"create_cluster"`
@@ -77,7 +76,6 @@ func (p KopsProvisioner) clusterConfigExists(sc *kapp.StackConfig, providerImpl 
 	args := []string{
 		"get",
 		"clusters",
-		kopsConfig.Name,
 	}
 
 	args = parameteriseValues(args, kopsConfig.Params.Global)
@@ -208,14 +206,11 @@ func (p KopsProvisioner) update(sc *kapp.StackConfig, providerImpl provider.Prov
 		return errors.WithStack(err)
 	}
 
-	clusterName := kopsConfig.Name
-
 	log.Infof("Performing a rolling update to apply config changes to the kops cluster...")
 	// todo users should be able to specify additional parameters in configs per-cluster
 	args := []string{
 		"rolling-update",
 		"cluster",
-		clusterName,
 		"--yes",
 	}
 
@@ -269,13 +264,10 @@ func (p KopsProvisioner) patch(sc *kapp.StackConfig, providerImpl provider.Provi
 		return errors.WithStack(err)
 	}
 
-	clusterName := kopsConfig.Name
-
 	// get the kops config
 	args := []string{
 		"get",
 		"cluster",
-		"--name", clusterName,
 		"-o",
 		"yaml",
 	}
@@ -293,14 +285,14 @@ func (p KopsProvisioner) patch(sc *kapp.StackConfig, providerImpl provider.Provi
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
 
-	log.Debugf("Downloading config for kops cluster %s", clusterName)
+	log.Debug("Downloading config for kops cluster...")
 
 	err = cmd.Run()
 	if err != nil {
 		return errors.Wrapf(err, "Failed to get Kops cluster config: %s", stderrBuf.String())
 	}
 
-	log.Debugf("Downloaded config for kops cluster %s:\n%s", clusterName, stdoutBuf.String())
+	log.Debugf("Downloaded config for kops cluster:\n%s", stdoutBuf.String())
 
 	kopsYamlConfig := map[string]interface{}{}
 	err = yaml.Unmarshal(stdoutBuf.Bytes(), kopsYamlConfig)
@@ -357,7 +349,6 @@ func (p KopsProvisioner) patch(sc *kapp.StackConfig, providerImpl provider.Provi
 	log.Debugf("Patching kops cluster config...")
 	args2 := []string{
 		"replace",
-		"--name", clusterName,
 		"-f",
 		tmpfile.Name(),
 	}
@@ -373,7 +364,7 @@ func (p KopsProvisioner) patch(sc *kapp.StackConfig, providerImpl provider.Provi
 		return errors.Wrapf(err, "Failed to patch Kops cluster config: %s", stderrBuf.String())
 	}
 
-	log.Infof("Config of Kops cluster '%s' patched.", clusterName)
+	log.Info("Config of Kops cluster patched.")
 
 	log.Debug("Patching instance group configs...")
 
@@ -381,18 +372,20 @@ func (p KopsProvisioner) patch(sc *kapp.StackConfig, providerImpl provider.Provi
 
 	for instanceGroupName, newSpec := range igSpecs {
 		specValues := map[string]interface{}{"spec": newSpec}
-		p.patchInstanceGroup(clusterName, kopsConfig, instanceGroupName.(string), specValues)
+		p.patchInstanceGroup(kopsConfig, instanceGroupName.(string), specValues)
 	}
 
 	log.Debugf("Applying kops cluster config...")
 	args3 := []string{
 		"update",
 		"cluster",
-		"--name", clusterName,
 		"--yes",
 	}
 
 	args3 = parameteriseValues(args3, kopsConfig.Params.Global)
+
+	log.Infof("Running Kops cluster update... Executing: %s %s", KOPS_PATH,
+		strings.Join(args3, " "))
 
 	cmd3 := exec.Command(KOPS_PATH, args3...)
 	cmd3.Env = os.Environ()
@@ -406,12 +399,11 @@ func (p KopsProvisioner) patch(sc *kapp.StackConfig, providerImpl provider.Provi
 	return nil
 }
 
-func (p KopsProvisioner) patchInstanceGroup(clusterName string, kopsConfig *KopsConfig, instanceGroupName string,
+func (p KopsProvisioner) patchInstanceGroup(kopsConfig *KopsConfig, instanceGroupName string,
 	newSpec map[string]interface{}) error {
 	args := []string{
 		"get",
 		"instancegroups",
-		"--name", clusterName,
 		instanceGroupName,
 		"-o",
 		"yaml",
@@ -430,14 +422,14 @@ func (p KopsProvisioner) patchInstanceGroup(clusterName string, kopsConfig *Kops
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
 
-	log.Debugf("Downloading IG config for kops cluster %s", clusterName)
+	log.Debug("Downloading IG config for kops cluster")
 
 	err := cmd.Run()
 	if err != nil {
 		return errors.Wrapf(err, "Failed to get Kops IG config: %s", stderrBuf.String())
 	}
 
-	log.Debugf("Downloaded IG config for kops cluster %s:\n%s", clusterName, stdoutBuf.String())
+	log.Debugf("Downloaded IG config for kops cluster:\n%s", stdoutBuf.String())
 
 	kopsYamlConfig := map[string]interface{}{}
 	err = yaml.Unmarshal(stdoutBuf.Bytes(), kopsYamlConfig)
@@ -480,7 +472,6 @@ func (p KopsProvisioner) patchInstanceGroup(clusterName string, kopsConfig *Kops
 	log.Debugf("Patching kops IG config...")
 	args2 := []string{
 		"replace",
-		"--name", clusterName,
 		"-f",
 		tmpfile.Name(),
 	}
@@ -496,7 +487,7 @@ func (p KopsProvisioner) patchInstanceGroup(clusterName string, kopsConfig *Kops
 		return errors.Wrapf(err, "Failed to patch Kops IG config: %s", stderrBuf.String())
 	}
 
-	log.Infof("IG config of Kops cluster '%s' patched.", clusterName)
+	log.Info("IG config of Kops cluster patched.")
 
 	return nil
 }
@@ -506,7 +497,10 @@ func parameteriseValues(args []string, valueMap map[string]string) []string {
 	for k, v := range valueMap {
 		key := strings.Replace(k, "_", "-", -1)
 		args = append(args, "--"+key)
-		args = append(args, fmt.Sprintf("%v", v))
+
+		if fmt.Sprintf("%v", v) != "" {
+			args = append(args, fmt.Sprintf("%v", v))
+		}
 	}
 
 	return args
