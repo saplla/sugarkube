@@ -116,11 +116,7 @@ func (p KopsProvisioner) create(sc *kapp.StackConfig, providerImpl provider.Prov
 		return errors.WithStack(err)
 	}
 
-	for k, v := range kopsConfig.Params.CreateCluster {
-		key := strings.Replace(k, "_", "-", -1)
-		args = append(args, "--"+key)
-		args = append(args, fmt.Sprintf("%v", v))
-	}
+	args = parameteriseValues(args, kopsConfig.Params.CreateCluster)
 
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
@@ -501,12 +497,15 @@ func (p KopsProvisioner) patchInstanceGroup(clusterName string, statePath string
 	return nil
 }
 
-func parameteriseValues(args []string, valueMap map[interface{}]interface{}) {
+// Converts YAML parameters to CLI args
+func parameteriseValues(args []string, valueMap map[string]string) []string {
 	for k, v := range valueMap {
-		key := strings.Replace(k.(string), "_", "-", -1)
+		key := strings.Replace(k, "_", "-", -1)
 		args = append(args, "--"+key)
 		args = append(args, fmt.Sprintf("%v", v))
 	}
+
+	return args
 }
 
 // Parses the Kops provisioner config
